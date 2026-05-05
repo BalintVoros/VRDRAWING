@@ -129,57 +129,58 @@ public class Crosshair : MonoBehaviour
         }
 
         string mode = b.drawingMode.ToString().ToUpper();
-        Color c = b.brushStartColor;
-        string colorText = string.Format(CultureInfo.InvariantCulture, "#{0:X2}{1:X2}{2:X2}", (int)(c.r * 255), (int)(c.g * 255), (int)(c.b * 255));
-        // Display names for HUD
-        string leftKeyName = "F1";
-        string rightKeyName = "F2";
-        // Key enums for input checks
-        UnityEngine.InputSystem.Key leftKeyEnum = UnityEngine.InputSystem.Key.F1;
-        UnityEngine.InputSystem.Key rightKeyEnum = UnityEngine.InputSystem.Key.F2;
+        string colorText = GetReadableColorName(b.brushStartColor);
 
-        if (DesktopInputController.Instance != null)
+        txt.text = $"Mode: {mode} | Color: {colorText}";
+    }
+
+    private string GetReadableColorName(Color color)
+    {
+        Color[] palette = new[]
         {
-            leftKeyName = DesktopInputController.Instance.GetMenuKeyDisplayName(true);
-            rightKeyName = DesktopInputController.Instance.GetMenuKeyDisplayName(false);
-            leftKeyEnum = DesktopInputController.Instance.LeftMenuKey;
-            rightKeyEnum = DesktopInputController.Instance.RightMenuKey;
+            Color.red,
+            Color.green,
+            Color.blue,
+            Color.white,
+            Color.black,
+            Color.yellow,
+            Color.cyan,
+            Color.magenta,
+            new Color(1f, 0.5f, 0f, 1f),
+            new Color(1f, 0.2f, 0.2f, 1f),
+            new Color(0.2f, 1f, 0.2f, 1f),
+            new Color(0.2f, 0.5f, 1f, 1f)
+        };
+
+        string[] names = new[]
+        {
+            "Red",
+            "Green",
+            "Blue",
+            "White",
+            "Black",
+            "Yellow",
+            "Cyan",
+            "Magenta",
+            "Orange",
+            "Soft Red",
+            "Soft Green",
+            "Soft Blue"
+        };
+
+        int closestIndex = 0;
+        float closestDistance = float.MaxValue;
+        for (int i = 0; i < palette.Length; i++)
+        {
+            float distance = Vector3.Distance(new Vector3(color.r, color.g, color.b), new Vector3(palette[i].r, palette[i].g, palette[i].b));
+            if (distance < closestDistance)
+            {
+                closestDistance = distance;
+                closestIndex = i;
+            }
         }
 
-        string debugLine = string.Empty;
-        if (showDebugKeys)
-        {
-            bool keyboardPresent = Keyboard.current != null;
-            string keyboardText = keyboardPresent ? "Keyboard: Present" : "Keyboard: MISSING";
-
-            string leftState = "-";
-            string rightState = "-";
-            if (keyboardPresent)
-            {
-                var lKeyControl = Keyboard.current[leftKeyEnum];
-                var rKeyControl = Keyboard.current[rightKeyEnum];
-                if (lKeyControl != null && lKeyControl.IsPressed()) leftState = "PRESSED";
-                if (rKeyControl != null && rKeyControl.IsPressed()) rightState = "PRESSED";
-            }
-
-            string leftAlt = string.Empty;
-            string rightAlt = string.Empty;
-            if (DesktopInputController.Instance != null)
-            {
-                leftAlt = DesktopInputController.Instance.GetMenuAltKeyDisplayName(true);
-                rightAlt = DesktopInputController.Instance.GetMenuAltKeyDisplayName(false);
-            }
-
-            string altInfo = string.Empty;
-            if (!string.IsNullOrEmpty(leftAlt) || !string.IsNullOrEmpty(rightAlt))
-            {
-                altInfo = $" (also {leftAlt}/{rightAlt})";
-            }
-
-            debugLine = $"\n{keyboardText} | Left({leftKeyName}): {leftState} | Right({rightKeyName}): {rightState}{altInfo}";
-        }
-
-        txt.text = $"Mode: {mode} | Color: {colorText}\n{leftKeyName}: Left Menu    {rightKeyName}: Right Menu{debugLine}";
+        return names[closestIndex];
     }
 
     // Simple toast message display under the HUD

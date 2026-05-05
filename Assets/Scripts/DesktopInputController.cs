@@ -47,6 +47,7 @@ public class DesktopInputController : MonoBehaviour
     private InputAction lookAction;
     private InputAction leftMenuAction;
     private InputAction rightMenuAction;
+    private bool isMenuOpen = false;
 
     public event System.Action LeftMenuPressed;
     public event System.Action RightMenuPressed;
@@ -172,14 +173,18 @@ public class DesktopInputController : MonoBehaviour
             DontDestroyOnLoad(qc);
             Debug.Log("DesktopInputController: Created DesktopQuickControls panel.");
         }
-        // Auto-create test buttons to help debug input wiring (only if not already present)
-        if (FindObjectOfType<DesktopInputTestButtons>() == null)
+
+        // Auto-create per-scene desktop UI setup so the drawing menu button appears in drawing/forest/room/beach scenes.
+        if (FindObjectOfType<DesktopUISetup>() == null)
         {
-            GameObject testButtons = new GameObject("DesktopInputTestButtons");
-            testButtons.AddComponent<DesktopInputTestButtons>();
-            DontDestroyOnLoad(testButtons);
-            Debug.Log("DesktopInputController: Created DesktopInputTestButtons for debugging.");
+            GameObject uiSetup = new GameObject("DesktopUISetup");
+            uiSetup.AddComponent<DesktopUISetup>();
+            DontDestroyOnLoad(uiSetup);
+            Debug.Log("DesktopInputController: Created DesktopUISetup for scene UI bootstrap.");
         }
+
+        EnsureRuntimeBrushExists();
+        // No test UI auto-creation to avoid interfering with crosshair and input.
         Debug.Log("[DesktopInputController] Initialization complete. Ready for desktop input.");
     }
 
@@ -212,6 +217,24 @@ public class DesktopInputController : MonoBehaviour
         if (Crosshair.Instance == null)
         {
             crosshairEnsured = false;
+        }
+
+        if (isMenuOpen)
+        {
+            Cursor.visible = true;
+            Cursor.lockState = CursorLockMode.None;
+
+            if (!crosshairEnsured)
+            {
+                EnsureCrosshairExists();
+            }
+
+            if (Crosshair.Instance != null)
+            {
+                Crosshair.Instance.SetCrosshairVisibility(false);
+            }
+
+            return;
         }
 
         // Always handle mouse look (no cursor lock required)
@@ -332,16 +355,27 @@ public class DesktopInputController : MonoBehaviour
     {
         if (vrCameraTransform == null)
             return Vector3.zero;
+        // Prefer mouse-based ray (screen point) when available so desktop users can aim with the cursor
+        Vector3 screenPos = Vector3.zero;
+#if ENABLE_INPUT_SYSTEM && !ENABLE_LEGACY_INPUT_MANAGER
+        if (UnityEngine.InputSystem.Mouse.current != null)
+        {
+            screenPos = UnityEngine.InputSystem.Mouse.current.position.ReadValue();
+        }
+        else
+#endif
+        {
+            screenPos = Input.mousePosition;
+        }
 
-        // Raycast from camera center forward
-        if (Physics.Raycast(vrCameraTransform.position, vrCameraTransform.forward, out RaycastHit hit, drawingRaycastDistance))
+        Ray ray = Camera.main != null ? Camera.main.ScreenPointToRay(screenPos) : new Ray(vrCameraTransform.position, vrCameraTransform.forward);
+        if (Physics.Raycast(ray, out RaycastHit hit, drawingRaycastDistance))
         {
             return hit.point;
         }
         else
         {
-            // If no hit, return point along the forward ray
-            return vrCameraTransform.position + vrCameraTransform.forward * 2f;
+            return ray.origin + ray.direction * 2f;
         }
     }
 
@@ -350,6 +384,23 @@ public class DesktopInputController : MonoBehaviour
     /// </summary>
     public Vector3 GetDrawingDirection()
     {
+        // If possible, derive direction from mouse screen ray so drawing aligns with cursor
+        Vector3 screenPos = Vector3.zero;
+#if ENABLE_INPUT_SYSTEM && !ENABLE_LEGACY_INPUT_MANAGER
+        if (UnityEngine.InputSystem.Mouse.current != null)
+        {
+            screenPos = UnityEngine.InputSystem.Mouse.current.position.ReadValue();
+        }
+        else
+#endif
+        {
+            screenPos = Input.mousePosition;
+        }
+
+        if (Camera.main != null)
+        {
+            return Camera.main.ScreenPointToRay(screenPos).direction;
+        }
         return vrCameraTransform.forward;
     }
 
@@ -358,7 +409,12 @@ public class DesktopInputController : MonoBehaviour
     /// </summary>
     public bool IsDrawingPressed()
     {
-        return Mouse.current.leftButton.isPressed;
+    #if ENABLE_INPUT_SYSTEM && !ENABLE_LEGACY_INPUT_MANAGER
+        if (Mouse.current != null) return Mouse.current.leftButton.isPressed;
+        return Input.GetMouseButton(0);
+    #else
+        return Input.GetMouseButton(0);
+    #endif
     }
 
     /// <summary>
@@ -366,7 +422,12 @@ public class DesktopInputController : MonoBehaviour
     /// </summary>
     public bool IsDrawingPressedDown()
     {
-        return Mouse.current.leftButton.wasPressedThisFrame;
+    #if ENABLE_INPUT_SYSTEM && !ENABLE_LEGACY_INPUT_MANAGER
+        if (Mouse.current != null) return Mouse.current.leftButton.wasPressedThisFrame;
+        return Input.GetMouseButtonDown(0);
+    #else
+        return Input.GetMouseButtonDown(0);
+    #endif
     }
 
     /// <summary>
@@ -374,7 +435,12 @@ public class DesktopInputController : MonoBehaviour
     /// </summary>
     public bool IsDrawingPressedUp()
     {
-        return Mouse.current.leftButton.wasReleasedThisFrame;
+    #if ENABLE_INPUT_SYSTEM && !ENABLE_LEGACY_INPUT_MANAGER
+        if (Mouse.current != null) return Mouse.current.leftButton.wasReleasedThisFrame;
+        return Input.GetMouseButtonUp(0);
+    #else
+        return Input.GetMouseButtonUp(0);
+    #endif
     }
 
     public Transform GetCameraTransform() => vrCameraTransform;
@@ -399,6 +465,35 @@ public class DesktopInputController : MonoBehaviour
     public void TriggerRightMenu()
     {
         RightMenuPressed?.Invoke();
+    }
+
+    public void SetMenuOpen(bool open)
+    {
+        isMenuOpen = open;
+        if (open)
+        {
+            Cursor.visible = true;
+            Cursor.lockState = CursorLockMode.None;
+        }
+        else
+        {
+            Cursor.visible = false;
+            Cursor.lockState = CursorLockMode.Locked;
+        }
+
+        Debug.Log($"[DesktopInputController] Menu state changed: open={open}, cursorVisible={Cursor.visible}, lockState={Cursor.lockState}");
+
+        if (Crosshair.Instance != null)
+        {
+            Crosshair.Instance.SetCrosshairVisibility(!open && Crosshair.Instance.ShouldCrosshairBeVisible());
+        }
+
+        Debug.Log($"[DesktopInputController] Menu open state set to {open}");
+    }
+
+    public bool IsMenuOpen()
+    {
+        return isMenuOpen;
     }
 
     private void EnsureCrosshairExists()
@@ -450,6 +545,47 @@ public class DesktopInputController : MonoBehaviour
         crosshairObject.AddComponent<Crosshair>();
         crosshairEnsured = true;
         Debug.Log("[DesktopInputController] Crosshair created automatically.");
+    }
+
+    private void EnsureRuntimeBrushExists()
+    {
+        Brush existingBrush = FindObjectOfType<Brush>();
+        if (existingBrush != null)
+        {
+            Debug.Log($"[DesktopInputController] Existing Brush found: {existingBrush.name}");
+            return;
+        }
+
+        GameObject drawingObject = GameObject.FindGameObjectWithTag("Drawing");
+        if (drawingObject == null)
+        {
+            Debug.LogWarning("[DesktopInputController] No Drawing object found; runtime brush will still be created but cannot paint until a Drawing object exists.");
+        }
+
+        GameObject brushObject = new GameObject("RuntimeDesktopBrush");
+        DontDestroyOnLoad(brushObject);
+
+        GameObject tip = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        tip.name = "Tip";
+        tip.transform.SetParent(brushObject.transform, false);
+        tip.transform.localPosition = new Vector3(0f, 0f, 0.25f);
+        tip.transform.localScale = new Vector3(0.02f, 0.02f, 0.02f);
+        Collider tipCollider = tip.GetComponent<Collider>();
+        if (tipCollider != null)
+        {
+            Destroy(tipCollider);
+        }
+
+        Brush brush = brushObject.AddComponent<Brush>();
+
+        Material tipMat = new Material(Shader.Find("Standard"));
+        tipMat.color = Color.white;
+
+        Material paintMat = new Material(Shader.Find("Sprites/Default"));
+
+        brush.ConfigureRuntimeBrush(tip.transform, tipMat, paintMat, drawingObject, Brush.HandType.Left);
+
+        Debug.Log("[DesktopInputController] Runtime desktop brush created.");
     }
 
     private Sprite CreateCrosshairSprite(int size)

@@ -101,9 +101,18 @@ public class DesktopUIInteractionManager : MonoBehaviour
             }
         }
 
-        // Ensure cursor is visible for UI interaction
-        Cursor.lockState = CursorLockMode.None;
-        Cursor.visible = true;
+        // Ensure cursor state matches whether crosshair is used.
+        // If a crosshair HUD exists, prefer locking and hiding the OS cursor so clicks map to center.
+        if (FindObjectOfType<Crosshair>() != null)
+        {
+            Cursor.lockState = CursorLockMode.Locked;
+            Cursor.visible = false;
+        }
+        else
+        {
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+        }
 
         // Select the first selectable element if none selected
         if (eventSystem.currentSelectedGameObject == null)
@@ -122,6 +131,16 @@ public class DesktopUIInteractionManager : MonoBehaviour
     {
         if (!isDesktopMode)
             return;
+
+        // If the drawing menu is visible, show the OS cursor so the user can click menu elements with the mouse.
+        // Also skip this manager's synthetic crosshair click to avoid double-invocation; the menu handles clicks itself.
+        bool menuVisible = DesktopDrawingMenu.Instance != null && DesktopDrawingMenu.Instance.IsVisible();
+        if (menuVisible)
+        {
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+            return;
+        }
 
         if (eventSystem == null)
         {
@@ -145,8 +164,13 @@ public class DesktopUIInteractionManager : MonoBehaviour
             }
         }
 
-        if (enableCrosshairClick && Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
+        if (enableCrosshairClick && !menuVisible && Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
         {
+            if (eventSystem != null && eventSystem.IsPointerOverGameObject())
+            {
+                return;
+            }
+
             HandleCrosshairClick();
         }
     }
@@ -156,14 +180,26 @@ public class DesktopUIInteractionManager : MonoBehaviour
         if (eventSystem == null)
             return;
 
+        Vector2 pointerPosition = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
+        if (Mouse.current != null)
+        {
+            pointerPosition = Mouse.current.position.ReadValue();
+        }
+
         PointerEventData pointerData = new PointerEventData(eventSystem)
         {
-            position = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f),
+            position = pointerPosition,
             button = PointerEventData.InputButton.Left
         };
 
         List<RaycastResult> results = new List<RaycastResult>();
         eventSystem.RaycastAll(pointerData, results);
+
+        Debug.Log($"[DesktopUIInteractionManager] PointerPosition={pointerPosition} RaycastHits={results.Count}");
+        for (int i = 0; i < results.Count; i++)
+        {
+            Debug.Log($"[DesktopUIInteractionManager] Raycast[{i}] target={results[i].gameObject.name} module={results[i].module}");
+        }
 
         if (results.Count == 0)
             return;

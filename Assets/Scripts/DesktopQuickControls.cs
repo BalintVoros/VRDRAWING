@@ -79,8 +79,8 @@ public class DesktopQuickControls : MonoBehaviour
         layout.spacing = 6f;
         layout.padding = new RectOffset(6, 6, 6, 6);
 
-        CreateButton("Left Menu", OnLeftMenu);
-        CreateButton("Right Menu", OnRightMenu);
+        CreateButton("Toggle Drawing Menu", OnToggleDrawingMenu);
+        CreateButton("Pin Drawing Menu", OnPinDrawingMenu);
         CreateButton("Cycle Mode", OnCycleMode);
         CreateButton("Open Color Menu", OnOpenColorMenu);
         CreateButton("Toggle Fullscreen", OnToggleFullscreen);
@@ -123,22 +123,28 @@ public class DesktopQuickControls : MonoBehaviour
         trt.offsetMax = Vector2.zero;
     }
 
-    private void OnLeftMenu()
+    private void OnToggleDrawingMenu()
     {
-        if (DesktopInputController.Instance != null)
+        // Ensure the DesktopDrawingMenu exists and toggle it
+        if (DesktopDrawingMenu.Instance == null)
         {
-            DesktopInputController.Instance.TriggerLeftMenu();
-            if (Crosshair.Instance != null) Crosshair.Instance.ShowToast("Left menu (UI) opened");
+            var go = new GameObject("DesktopDrawingMenu");
+            go.AddComponent<DesktopDrawingMenu>();
         }
+        DesktopDrawingMenu.Instance.ToggleVisible();
+        if (Crosshair.Instance != null) Crosshair.Instance.ShowToast("Drawing menu toggled");
     }
 
-    private void OnRightMenu()
+    private void OnPinDrawingMenu()
     {
-        if (DesktopInputController.Instance != null)
+        // Create or ensure menu exists, then pin by setting visible and leaving it (simple approach)
+        if (DesktopDrawingMenu.Instance == null)
         {
-            DesktopInputController.Instance.TriggerRightMenu();
-            if (Crosshair.Instance != null) Crosshair.Instance.ShowToast("Right menu (UI) opened");
+            var go = new GameObject("DesktopDrawingMenu");
+            go.AddComponent<DesktopDrawingMenu>();
         }
+        DesktopDrawingMenu.Instance.Pin();
+        if (Crosshair.Instance != null) Crosshair.Instance.ShowToast("Drawing menu pinned (visible)");
     }
 
     private void OnCycleMode()
@@ -167,8 +173,14 @@ public class DesktopQuickControls : MonoBehaviour
 
     private void OnOpenColorMenu()
     {
-        // Open left menu which contains color controls
-        OnLeftMenu();
+        // Open the unified drawing menu which contains color controls
+        if (DesktopDrawingMenu.Instance == null)
+        {
+            var go = new GameObject("DesktopDrawingMenu");
+            go.AddComponent<DesktopDrawingMenu>();
+        }
+        DesktopDrawingMenu.Instance.SetVisible(true);
+        if (Crosshair.Instance != null) Crosshair.Instance.ShowToast("Color menu opened");
     }
 
     private void OnToggleFullscreen()

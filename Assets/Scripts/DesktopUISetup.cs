@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using System.Collections;
+using TMPro;
 
 public class DesktopUISetup : MonoBehaviour
 {
@@ -9,6 +10,7 @@ public class DesktopUISetup : MonoBehaviour
 
     [Header("Canvas References")]
     [SerializeField] private Canvas uiCanvas;
+    [SerializeField] private bool createMenuButtonIfMissing = true;
 
     [Header("Crosshair Settings")]
     [SerializeField] private bool createCrosshairIfMissing = true;
@@ -40,8 +42,15 @@ public class DesktopUISetup : MonoBehaviour
             uiCanvas = FindObjectOfType<Canvas>();
             if (uiCanvas == null)
             {
-                Debug.LogError("[DesktopUISetup] No Canvas found in scene! Cannot setup desktop UI.");
-                yield break;
+                GameObject canvasObject = new GameObject("DesktopUICanvas");
+                uiCanvas = canvasObject.AddComponent<Canvas>();
+                uiCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+                uiCanvas.overrideSorting = true;
+                uiCanvas.sortingOrder = 32767;
+                canvasObject.AddComponent<CanvasScaler>();
+                canvasObject.AddComponent<GraphicRaycaster>();
+                DontDestroyOnLoad(canvasObject);
+                Debug.Log("[DesktopUISetup] Created persistent DesktopUICanvas.");
             }
         }
 
@@ -54,6 +63,19 @@ public class DesktopUISetup : MonoBehaviour
         else if (crosshair != null)
         {
             Debug.Log("[DesktopUISetup] Crosshair already exists in scene.");
+        }
+
+        if (createMenuButtonIfMissing)
+        {
+            EnsureMenuButton();
+        }
+
+        // Ensure the unified desktop drawing menu exists in desktop scenes
+        if (DesktopDrawingMenu.Instance == null)
+        {
+            var go = new GameObject("DesktopDrawingMenu");
+            go.AddComponent<DesktopDrawingMenu>();
+            Debug.Log("[DesktopUISetup] Created DesktopDrawingMenu for this scene.");
         }
 
         yield break;
@@ -76,6 +98,11 @@ public class DesktopUISetup : MonoBehaviour
         Image image = crosshairObject.AddComponent<Image>();
         image.color = Color.white;
 
+        // Ensure crosshair does not block UI raycasts
+        image.raycastTarget = false;
+        CanvasGroup cg = crosshairObject.AddComponent<CanvasGroup>();
+        cg.blocksRaycasts = false;
+
         // Create a simple crosshair texture (white circle)
         Texture2D crosshairTexture = CreateCrosshairTexture(32);
         Sprite crosshairSprite = Sprite.Create(crosshairTexture, new Rect(0, 0, 32, 32), new Vector2(0.5f, 0.5f));
@@ -83,10 +110,66 @@ public class DesktopUISetup : MonoBehaviour
 
         // Add Crosshair script
         Crosshair crosshairScript = crosshairObject.AddComponent<Crosshair>();
-        // Ensure crosshair renders above other UI elements
+        // Ensure crosshair renders above other UI elements (but does not block raycasts)
         crosshairObject.transform.SetAsLastSibling();
 
-        Debug.Log("[DesktopUISetup] Crosshair created successfully and placed on top of Canvas.");
+        Debug.Log("[DesktopUISetup] Crosshair created successfully and placed on top of Canvas. (raycastTarget=false, blocksRaycasts=false)");
+    }
+
+    private void EnsureMenuButton()
+    {
+        if (uiCanvas == null)
+            return;
+
+        Transform existing = uiCanvas.transform.Find("DesktopMenuButton");
+        if (existing != null)
+            return;
+
+        GameObject buttonObject = new GameObject("DesktopMenuButton");
+        buttonObject.transform.SetParent(uiCanvas.transform, false);
+
+        RectTransform rectTransform = buttonObject.AddComponent<RectTransform>();
+        rectTransform.anchorMin = new Vector2(0f, 1f);
+        rectTransform.anchorMax = new Vector2(0f, 1f);
+        rectTransform.pivot = new Vector2(0f, 1f);
+        rectTransform.anchoredPosition = new Vector2(12f, -12f);
+        rectTransform.sizeDelta = new Vector2(120f, 34f);
+
+        Image background = buttonObject.AddComponent<Image>();
+        background.color = new Color(0.1f, 0.1f, 0.1f, 0.9f);
+
+        Button button = buttonObject.AddComponent<Button>();
+        ColorBlock colors = button.colors;
+        colors.normalColor = background.color;
+        colors.highlightedColor = new Color(0.2f, 0.2f, 0.2f, 0.95f);
+        colors.pressedColor = new Color(0.05f, 0.05f, 0.05f, 0.95f);
+        button.colors = colors;
+        button.onClick.AddListener(() =>
+        {
+            Debug.Log("[DesktopUISetup] Drawing Menu button clicked.");
+            if (DesktopDrawingMenu.Instance == null)
+            {
+                GameObject menuObject = new GameObject("DesktopDrawingMenu");
+                menuObject.AddComponent<DesktopDrawingMenu>();
+            }
+
+            DesktopDrawingMenu.Instance.ToggleVisible();
+        });
+
+        GameObject labelObject = new GameObject("Text");
+        labelObject.transform.SetParent(buttonObject.transform, false);
+        Text label = labelObject.AddComponent<Text>();
+        label.text = "Drawing Menu";
+        label.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        label.fontSize = 16;
+        label.alignment = TextAnchor.MiddleCenter;
+        label.color = Color.white;
+
+        RectTransform labelRect = label.GetComponent<RectTransform>();
+        labelRect.anchorMin = Vector2.zero;
+        labelRect.anchorMax = Vector2.one;
+        labelRect.offsetMin = Vector2.zero;
+        labelRect.offsetMax = Vector2.zero;
     }
 
     private Texture2D CreateCrosshairTexture(int size)

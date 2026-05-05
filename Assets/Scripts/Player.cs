@@ -58,7 +58,7 @@ public class Player : MonoBehaviour
         if (characterController == null) characterController = GetComponent<CharacterController>();
 
         GameObject drawingObject = GameObject.FindGameObjectWithTag("Drawing");
-        if (leftBrush.drawingObject != null && rightBrush.drawingObject != null && drawingObject != null)
+        if (drawingObject != null && leftBrush != null && rightBrush != null)
         {
             leftBrush.drawingObject = drawingObject;
             rightBrush.drawingObject = drawingObject;

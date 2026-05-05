@@ -724,50 +724,30 @@ public class ModelPlacer : MonoBehaviour
         {
             return true;
         }
-        
-        if (drawingHandMenuLeft == null)
-        {
-            drawingHandMenuLeft = FindObjectOfType<DrawingHandMenuLeft>();
-        }
-        
-        if (drawingHandMenuLeft != null)
-        {
-            Brush.DrawingMode currentMode = drawingHandMenuLeft.drawingMode;
-            bool isGrabMode = currentMode == Brush.DrawingMode.Grab;
-            
-            if (!isGrabMode)
-            {
-                if (Time.frameCount % 60 == 0)
-                {
-                    Debug.LogWarning($"ModelPlacer: Left hand drawing mode is '{currentMode}' (expected 'Grab'). Please select 'Grab' mode from the LEFT hand menu dropdown.");
-                }
-            }
-            return isGrabMode;
-        }
-        
+
         if (brushObject == null)
         {
             brushObject = FindObjectOfType<Brush>();
         }
-        
+
         if (brushObject == null)
         {
             if (Time.frameCount % 60 == 0)
             {
-                Debug.LogWarning("ModelPlacer: Brush object and left hand menu are null, cannot check Grab mode. Blocking placement for safety.");
+                Debug.LogWarning("ModelPlacer: No active Brush found, cannot verify Grab mode.");
             }
             return false;
         }
-        
-        Brush.DrawingMode brushMode = brushObject.drawingMode;
-        bool isGrabModeFallback = brushMode == Brush.DrawingMode.Grab;
-        
-        if (!isGrabModeFallback && Time.frameCount % 60 == 0)
+
+        Brush.DrawingMode currentMode = brushObject.drawingMode;
+        bool isGrabMode = currentMode == Brush.DrawingMode.Grab;
+
+        if (!isGrabMode && Time.frameCount % 60 == 0)
         {
-            Debug.LogWarning($"ModelPlacer: Drawing mode is {brushMode}, not Grab. Please select Grab mode from the drawing menu.");
+            Debug.LogWarning($"ModelPlacer: Current drawing mode is '{currentMode}', expected 'Grab'. Select Grab from the desktop drawing menu.");
         }
-        
-        return isGrabModeFallback;
+
+        return isGrabMode;
     }
 
     private void TryPlaceModel(XRRayInteractor rayInteractor)

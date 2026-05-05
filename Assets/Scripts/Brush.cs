@@ -52,6 +52,46 @@ public class Brush : MonoBehaviour
 
     public static readonly List<string> DrawingBlockedScenes = new() { "Login" };
 
+    public void ConfigureRuntimeBrush(Transform tipTransform, Material tipMat, Material paintMat, GameObject targetDrawingObject, HandType runtimeHandType)
+    {
+        brushTip = tipTransform;
+        tipMaterial = tipMat;
+        paintingMaterial = paintMat;
+        drawingObject = targetDrawingObject;
+        handType = runtimeHandType;
+        enableDesktopMode = true;
+        isDesktopMode = true;
+        drawingMode = DrawingMode.Draw;
+    }
+
+    private void Awake()
+    {
+        if (transform.parent == null)
+        {
+            DontDestroyOnLoad(gameObject);
+        }
+        SceneManager.sceneLoaded += OnSceneLoaded;
+        Debug.Log($"[Brush] Awake for {handType} on {name}");
+    }
+
+    private void OnDestroy()
+    {
+        SceneManager.sceneLoaded -= OnSceneLoaded;
+    }
+
+    private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+    {
+        drawingObject = GameObject.FindGameObjectWithTag("Drawing");
+        if (drawingObject != null)
+        {
+            Debug.Log($"[Brush] {handType} re-bound drawingObject to {drawingObject.name} on scene {scene.name}");
+        }
+        else if (!DrawingBlockedScenes.Contains(scene.name))
+        {
+            Debug.LogWarning($"[Brush] {handType} could not find Drawing object on scene {scene.name}");
+        }
+    }
+
     private void Start()
     {
         drawingObject = GameObject.FindGameObjectWithTag("Drawing");
@@ -76,10 +116,24 @@ public class Brush : MonoBehaviour
             }
             Debug.Log($"[Brush] Desktop mode detected and enabled for {handType} brush.");
         }
+
+        Debug.Log($"[Brush] Start complete for {handType}: drawingObject={(drawingObject != null ? drawingObject.name : "NULL")}, mode={drawingMode}, desktop={isDesktopMode}");
     }
 
     private void Update()
     {
+        // DesktopInputController can be created after this Brush starts, so re-check every frame.
+        bool desktopModeNow = enableDesktopMode && DesktopInputController.Instance != null;
+        if (desktopModeNow && !isDesktopMode)
+        {
+            isDesktopMode = true;
+            if (!DrawingBlockedScenes.Contains(SceneManager.GetActiveScene().name))
+            {
+                drawingMode = DrawingMode.Draw;
+            }
+            Debug.Log($"[Brush] Desktop mode became available for {handType} brush.");
+        }
+
         if (isDesktopMode)
         {
             HandleDesktopModeShortcuts();
@@ -90,6 +144,8 @@ public class Brush : MonoBehaviour
         {
             isPainting = DesktopInputController.Instance.IsDrawingPressed();
             desktopBrushPosition = DesktopInputController.Instance.GetDrawingPosition();
+            if (Time.frameCount % 30 == 0)
+                Debug.Log($"[Brush] {handType}: desktop input={isPainting}, mode={drawingMode}, pos={desktopBrushPosition}, drawingObject={(drawingObject != null ? drawingObject.name : "NULL")}");
         }
         else
         {
@@ -99,11 +155,17 @@ public class Brush : MonoBehaviour
             }
         }
 
-        if (!drawingHandMenuLeft.handMenuEnableState && !drawingHandMenuRight.handMenuEnableState)
+        // In desktop mode, ignore hand menu state and allow drawing directly
+        bool canDraw = isDesktopMode || (!drawingHandMenuLeft.handMenuEnableState && !drawingHandMenuRight.handMenuEnableState);
+        if (canDraw)
         {
             if (drawingMode == DrawingMode.Draw)
             {
-                if (isPainting) Paint();
+                if (isPainting) 
+                {
+                    Debug.Log($"[Brush] {handType} calling Paint at {desktopBrushPosition}");
+                    Paint();
+                }
                 else if (currentLine != null)
                 {
                     if (currentLine.gameObject.GetComponent<MeshCollider>() == null)
@@ -187,6 +249,12 @@ public class Brush : MonoBehaviour
 
     private void Paint()
     {
+        if (drawingObject == null)
+        {
+            Debug.LogWarning($"[Brush] {handType} Paint() aborted: drawingObject is null");
+            return;
+        }
+
         Vector3 currentBrushPosition = isDesktopMode ? desktopBrushPosition : brushTip.position;
 
         if (currentLine == null)
@@ -194,7 +262,20 @@ public class Brush : MonoBehaviour
             /* Initialize the LineRenderer with the first position */
             index = 0;
             currentLine = new GameObject(name: $"Line_{GetTimestamp()}").AddComponent<LineRenderer>();
-            currentLine.material = paintingMaterial;
+            Debug.Log($"[Brush] {handType} created new line object {currentLine.name} at {currentBrushPosition}");
+            if (paintingMaterial != null)
+            {
+                currentLine.material = paintingMaterial;
+            }
+            else
+            {
+                Shader shader = Shader.Find("Sprites/Default");
+                if (shader != null)
+                {
+                    currentLine.material = new Material(shader);
+                    Debug.LogWarning($"[Brush] {handType} paintingMaterial missing, using fallback Sprites/Default material.");
+                }
+            }
             currentLine.startColor = brushStartColor;
             currentLine.endColor = brushEndColor;
             currentLine.startWidth = brushStartWidth;
@@ -222,9 +303,11 @@ public class Brush : MonoBehaviour
             }
             else
             {
-                //Suppress annoying error messages in scenes where drawing is blocked
-                if (DrawingBlockedScenes.Contains(SceneManager.GetActiveScene().name)) Debug.LogWarning("Drawing is blocked in this scene.");
-                else Debug.LogError("The drawingObject does not have a VRDrawing component attached.");
+                // Only warn once per missing VRDrawing setup instead of spamming every frame.
+                if (Time.frameCount % 120 == 0)
+                {
+                    Debug.LogWarning("The drawingObject does not have a VRDrawing component attached.");
+                }
             }
         }
         else
@@ -241,11 +324,9 @@ public class Brush : MonoBehaviour
                     pointTimestamps.Add(GetTimestamp());
                     vrDrawingData.drawing.lines[^1].points.Add(new DrawingData.Point(currentBrushPosition, pointTimestamps[^1]));
                 }
-                else
+                else if (Time.frameCount % 120 == 0)
                 {
-                    //Suppress annoying error messages in scenes where drawing is blocked
-                    if (DrawingBlockedScenes.Contains(SceneManager.GetActiveScene().name)) Debug.LogWarning("Drawing is blocked in this scene.");
-                    else Debug.LogError("The drawingObject does not have a VRDrawing component attached.");
+                    Debug.LogWarning("The drawingObject does not have a VRDrawing component attached.");
                 }
             }
         }
